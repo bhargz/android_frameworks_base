@@ -17,6 +17,22 @@
 
 package com.android.systemui.statusbar;
 
+import android.service.notification.StatusBarNotification;
+import android.content.res.Configuration;
+import com.android.internal.statusbar.IStatusBarService;
+import com.android.internal.statusbar.StatusBarIcon;
+import com.android.internal.statusbar.StatusBarIconList;
+import com.android.internal.widget.SizeAdaptiveLayout;
+import com.android.systemui.R;
+import com.android.systemui.SearchPanelView;
+import com.android.systemui.SystemUI;
+import com.android.systemui.recent.RecentTasksLoader;
+import com.android.systemui.recent.RecentsActivity;
+import com.android.systemui.recent.TaskDescription;
+import com.android.systemui.statusbar.policy.NotificationRowLayout;
+import com.android.systemui.statusbar.policy.activedisplay.ActiveDisplayView;
+import com.android.systemui.statusbar.tablet.StatusBarPanel;
+
 import android.app.ActivityManager;
 import android.app.ActivityManagerNative;
 import android.app.ActivityOptions;
@@ -242,6 +258,8 @@ public abstract class BaseStatusBar extends SystemUI implements
     public NotificationRowLayout getNotificationRowLayout() {
         return mPile;
     }
+
+    protected ActiveDisplayView mActiveDisplayView;
 
     public IStatusBarService getStatusBarService() {
         return mBarService;
@@ -1853,5 +1871,91 @@ public abstract class BaseStatusBar extends SystemUI implements
     public boolean inKeyguardRestrictedInputMode() {
         KeyguardManager km = (KeyguardManager) mContext.getSystemService(Context.KEYGUARD_SERVICE);
         return km.inKeyguardRestrictedInputMode();
+    }
+
+    class SidebarObserver extends ContentObserver {
+        SidebarObserver(Handler handler) {
+            super(handler);
+        }
+
+        void observe() {
+            ContentResolver resolver = mContext.getContentResolver();
+            resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.APP_SIDEBAR_POSITION), false, this);
+            update();
+        }
+
+        @Override
+        public void onChange(boolean selfChange) {
+            update();
+        }
+
+        public void update() {
+            ContentResolver resolver = mContext.getContentResolver();
+            int sidebarPosition = Settings.System.getInt(
+                    resolver, Settings.System.APP_SIDEBAR_POSITION, AppSidebar.SIDEBAR_POSITION_LEFT);
+            if (sidebarPosition != mSidebarPosition) {
+                mSidebarPosition = sidebarPosition;
+                mWindowManager.updateViewLayout(mAppSidebar, getAppSidebarLayoutParams(sidebarPosition));
+            }
+        }
+    }
+
+    protected void addSidebarView() {
+        mAppSidebar = (AppSidebar)View.inflate(mContext, R.layout.app_sidebar, null);
+        mWindowManager.addView(mAppSidebar, getAppSidebarLayoutParams(mSidebarPosition));
+    }
+
+    protected void removeSidebarView() {
+        if (mAppSidebar != null)
+            mWindowManager.removeView(mAppSidebar);
+    }
+
+    protected WindowManager.LayoutParams getAppSidebarLayoutParams(int position) {
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_STATUS_BAR_SUB_PANEL,
+                0
+                | WindowManager.LayoutParams.FLAG_TOUCHABLE_WHEN_WAKING
+                | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                | WindowManager.LayoutParams.FLAG_SPLIT_TOUCH,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.TOP;// | Gravity.FILL_VERTICAL;
+        lp.gravity |= position == AppSidebar.SIDEBAR_POSITION_LEFT ? Gravity.LEFT : Gravity.RIGHT;
+        lp.setTitle("AppSidebar");
+
+        return lp;
+    }
+
+    protected void addActiveDisplayView() {
+        mActiveDisplayView = (ActiveDisplayView)View.inflate(mContext, R.layout.active_display, null);
+        mWindowManager.addView(mActiveDisplayView, getActiveDisplayViewLayoutParams());
+        mActiveDisplayView.setStatusBar(this);
+    }
+
+    protected void removeActiveDisplayView() {
+        if (mActiveDisplayView != null)
+            mWindowManager.removeView(mActiveDisplayView);
+    }
+
+    protected WindowManager.LayoutParams getActiveDisplayViewLayoutParams() {
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_STATUS_BAR_PANEL,
+                0
+                        | WindowManager.LayoutParams.FLAG_TOUCHABLE_WHEN_WAKING
+                        | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                        | WindowManager.LayoutParams.FLAG_SPLIT_TOUCH,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.TOP | Gravity.FILL_VERTICAL | Gravity.FILL_HORIZONTAL;
+        lp.setTitle("ActiveDisplayView");
+
+        return lp;
     }
 }

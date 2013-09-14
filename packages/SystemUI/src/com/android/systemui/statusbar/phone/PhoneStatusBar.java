@@ -83,9 +83,10 @@ import android.view.animation.AnimationUtils;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.TabHost;
+import android.widget.TabHost.TabSpec;
 import android.widget.TextView;
 
 import com.android.systemui.recent.RecentsActivity;
@@ -435,6 +436,37 @@ public class PhoneStatusBar extends BaseStatusBar {
         }
         // set recents activity navigation bar view
         RecentsActivity.addNavigationCallback(mNavigationBarView);
+
+        mStatusBarTrigger = (TriggerView)View.inflate(context, R.layout.trigger_view, null);
+        mWindowManager.addView(mStatusBarTrigger, getStatusBarTriggerViewLayoutParams());
+        if (DEBUG_TRIGGERS)
+            mStatusBarTrigger.setBackgroundColor(0xffff0000);
+
+        // listen for the trigger to show statusbar
+        mStatusBarTrigger.setOnTriggerListener(
+                new TriggerView.OnTriggerListener() {
+                    @Override
+                    public void onTriggered(View v) {
+                        if (v == mStatusBarTrigger) {
+                            try {
+                                if (mWindowManagerService.shouldHideStatusBar()) {
+                                    mWindowManagerService.showStatusBar();
+                                    updateAutoHideTimer(ACTION_STATUSBAR_HIDE);
+                                    mStatusBarView.requestFocus();
+                                }
+                            } catch (RemoteException e) {
+                            }
+                        }
+                    }
+                });
+
+        if (mRecreating) {
+            removeSidebarView();
+        } else {
+            addActiveDisplayView();
+        }
+
+        addSidebarView();
 
         // figure out which pixel-format to use for the status bar.
         mPixelFormat = PixelFormat.TRANSLUCENT;
@@ -2003,7 +2035,7 @@ protected WindowManager.LayoutParams getRecentsLayoutParams(LayoutParams layoutP
         setAreThereNotifications();
     }
 
-    private boolean areLightsOn() {
+    public boolean areLightsOn() {
         return 0 == (mSystemUiVisibility & View.SYSTEM_UI_FLAG_LOW_PROFILE);
     }
 
@@ -2023,6 +2055,11 @@ protected WindowManager.LayoutParams getRecentsLayoutParams(LayoutParams layoutP
         }
     }
 
+    public void setNavigationBarLightsOn(boolean on, boolean force) {
+        mNavigationBarView.setLowProfile(!on, true, force);
+    }
+
+    @Override
     public void topAppWindowChanged(boolean showMenu) {
         if (mPieControlPanel != null)
             mPieControlPanel.setMenu(showMenu);
